@@ -2,10 +2,11 @@
 import shlex
 from pathlib import Path
 
-from gi.repository import Gio
+from gi.repository import Gio, GLib
 
 
 project_dir = Path(__file__).resolve().parent
+launcher = str(project_dir / "toggle")
 shortcut_path = (
     "/org/gnome/settings-daemon/plugins/media-keys/custom-keybindings/"
     "kitty-dropdown/"
@@ -18,13 +19,36 @@ shortcut = Gio.Settings.new_with_path(
 
 shortcut.delay()
 shortcut.set_string("name", "Kitty dropdown")
-shortcut.set_string("command", shlex.quote(str(project_dir / "toggle")))
+shortcut.set_string("command", shlex.quote(launcher))
 shortcut.set_string("binding", "<Control>Escape")
 shortcut.apply()
 
 paths = settings.get_strv("custom-keybindings")
 if shortcut_path not in paths:
     settings.set_strv("custom-keybindings", [*paths, shortcut_path])
+
+notifications = Gio.Settings.new_with_path(
+    "org.gnome.desktop.notifications.application",
+    "/org/gnome/desktop/notifications/application/kitty/",
+)
+notifications.set_boolean("enable", False)
+
+escaped_launcher = launcher.replace("%", "%%")
+for character in ("\\", '"', "`", "$"):
+    escaped_launcher = escaped_launcher.replace(character, "\\" + character)
+autostart = GLib.KeyFile()
+autostart.set_string("Desktop Entry", "Type", "Application")
+autostart.set_string("Desktop Entry", "Name", "Kitty dropdown")
+autostart.set_string(
+    "Desktop Entry", "Exec", f'env "{escaped_launcher}" --override start_as_hidden=yes'
+)
+autostart.set_boolean("Desktop Entry", "Terminal", False)
+autostart_dir = Path(GLib.get_user_config_dir()) / "autostart"
+autostart_dir.mkdir(parents=True, exist_ok=True)
+(autostart_dir / "kitty-dropdown.desktop").write_text(
+    autostart.to_data()[0], encoding="utf-8"
+)
 Gio.Settings.sync()
 
-print("Ctrl+Esc toggles Kitty. Existing custom shortcuts are preserved.")
+print("Ctrl+Esc toggles Kitty; it starts hidden at login. Kitty notifications are off.")
+print("Existing custom shortcuts are preserved.")

@@ -16,4 +16,5 @@ cd -- "$HOME"
 exec "$kitty_bin/kitten" quick-access-terminal \
 	--config "$project_dir/quick-access-terminal.conf" \
 	--instance-group kitty-dropdown \
+	"$@" \
 	--detach
