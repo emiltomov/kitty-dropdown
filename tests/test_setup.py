@@ -22,6 +22,7 @@ class SetupTests(unittest.TestCase):
             kitten.chmod(0o755)
             env = dict(
                 os.environ, HOME=home, XDG_STATE_HOME=str(Path(home) / "state"),
+                XDG_CONFIG_HOME=str(Path(home) / "config with spaces"),
                 KITTY_PID="123", KITTY_INSTALLATION_DIR="/old",
             )
             for arguments in ([], ["--override", "start_as_hidden=yes"]):
@@ -48,6 +49,31 @@ class SetupTests(unittest.TestCase):
                 [str(ROOT / "toggle")], env=env, check=True, capture_output=True, text=True,
             )
             self.assertIn(f"--config\n{state}\n", result.stdout)
+            for use_xdg in (True, False):
+                with self.subTest(use_xdg=use_xdg):
+                    environment = dict(env)
+                    config_root = Path(environment["XDG_CONFIG_HOME"])
+                    if not use_xdg:
+                        environment.pop("XDG_CONFIG_HOME")
+                        config_root = Path(home) / ".config"
+                    user_config = config_root / "kitty-dropdown/config.conf"
+                    user_config.parent.mkdir(parents=True)
+                    user_config.write_text("lines 600px\nbackground_opacity 0.85\n")
+                    result = subprocess.run(
+                        [str(ROOT / "toggle"), "--override", "background_opacity=0.9"],
+                        env=environment, check=True, capture_output=True, text=True,
+                    )
+                    arguments = result.stdout.splitlines()
+                    configs = [
+                        arguments[index + 1] for index, value in enumerate(arguments)
+                        if value == "--config"
+                    ]
+                    self.assertEqual(configs, [
+                        str(ROOT / "quick-access-terminal.conf"), str(user_config), str(state),
+                    ])
+                    self.assertEqual(
+                        arguments[-3:], ["--override", "background_opacity=0.9", "--detach"]
+                    )
 
     def test_install_preserves_shortcuts_and_creates_hidden_autostart(self):
         with tempfile.TemporaryDirectory() as temporary:

@@ -89,7 +89,16 @@ events; other tab events retain Kitty's handler. Pin changes native
 `hide_on_focus_loss`; height changes use native OS-window resizing. Saved
 choices in `$XDG_STATE_HOME/kitty-dropdown/controls.conf` (default
 `~/.local/state/kitty-dropdown/controls.conf`) load after the base configuration
-and before explicit launcher overrides.
+and optional `$XDG_CONFIG_HOME/kitty-dropdown/config.conf` (default
+`~/.config/kitty-dropdown/config.conf`), and before explicit launcher overrides.
+Keep this precedence: defaults, user configuration, saved controls, explicit
+overrides. `config.example.conf` documents native settings without modifying a
+user's existing configuration.
+
+Bare native tab-bar `new_tab()` requests inherit the active window through
+`CwdRequest`; explicit creation arguments remain unchanged. Ctrl+Shift+T uses
+the native `new_tab_with_cwd` action. Keep the first shell's home directory
+independent of this subsequent-tab behavior.
 
 On initial focus and after every native show request, the watchers call
 `desktop.py` with system Python to query the pointer monitor's usable geometry

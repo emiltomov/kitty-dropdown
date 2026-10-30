@@ -13,8 +13,18 @@ class Controls:
     def __init__(self, manager):
         self.manager = manager
         self.original_mouse = manager.handle_tab_bar_mouse
+        self.original_new_tab = manager.new_tab
         self.start = None
         self.pressed = None
+
+    def new_tab(self, *args, **kwargs):
+        from kitty.window import CwdRequest
+
+        if not args and not kwargs:
+            tab = self.manager.active_tab
+            if tab is not None and tab.active_window is not None:
+                kwargs["cwd_from"] = CwdRequest(tab.active_window)
+        return self.original_new_tab(*args, **kwargs)
 
     def config(self):
         from kitty.fast_data_types import layer_shell_config_for_os_window
@@ -139,6 +149,7 @@ def on_tab_bar_dirty(boss, window, data):
     if controls is None:
         controls = manager._dropdown_controls = Controls(manager)
         manager.handle_tab_bar_mouse = controls.mouse
+        manager.new_tab = controls.new_tab
     manager.tab_bar.draw_func = controls.draw
     for tab in manager:
         for child in tab:

@@ -34,11 +34,13 @@ class ControlsTests(unittest.TestCase):
             "kitty": ModuleType("kitty"),
             "kitty.fast_data_types": self.native,
             "kitty.types": SimpleNamespace(LayerShellConfig=SimpleNamespace),
+            "kitty.window": SimpleNamespace(CwdRequest=lambda window: SimpleNamespace(window=window)),
         })
         modules.start()
         self.addCleanup(modules.stop)
         self.manager = SimpleNamespace(
             os_window_id=1, handle_tab_bar_mouse=Mock(), mark_tab_bar_dirty=Mock(),
+            new_tab=Mock(), active_tab=SimpleNamespace(active_window=object()),
             tab_bar=SimpleNamespace(
                 window_geometry=SimpleNamespace(left=0, right=900, top=700, bottom=718),
                 cell_width=9,
@@ -46,6 +48,26 @@ class ControlsTests(unittest.TestCase):
         )
         self.controls = Controls(self.manager)
         self.controls.start = 70
+
+    def test_native_new_tab_inherits_the_current_window_each_time(self):
+        for window in (object(), object()):
+            self.manager.active_tab.active_window = window
+            self.controls.new_tab()
+            request = self.manager.new_tab.call_args.kwargs["cwd_from"]
+            self.assertIs(request.window, window)
+
+    def test_native_new_tab_preserves_explicit_requests_and_initial_directory(self):
+        for args, kwargs in (
+            ((), {"cwd_from": object()}),
+            ((object(),), {}),
+            ((), {"empty_tab": True}),
+        ):
+            with self.subTest(args=args, kwargs=kwargs):
+                self.controls.new_tab(*args, **kwargs)
+                self.manager.new_tab.assert_called_with(*args, **kwargs)
+        self.manager.active_tab = None
+        self.controls.new_tab()
+        self.manager.new_tab.assert_called_with()
 
     def test_pin_click_saves_state_but_drag_off_does_not_activate(self):
         self.controls.place = Mock()
@@ -95,6 +117,8 @@ class ControlsTests(unittest.TestCase):
         install(None, child, {"tab_manager": manager})
         self.assertEqual(len(child.watchers.on_focus_change), 2)
         self.assertIs(child.watchers.on_focus_change[0], callback)
+        self.assertIs(manager._dropdown_controls.original_new_tab, self.manager.new_tab)
+        self.assertEqual(manager.new_tab, manager._dropdown_controls.new_tab)
 
     def test_controls_do_not_expand_the_last_tabs_clickable_extent(self):
         screen = SimpleNamespace(columns=100, cursor=SimpleNamespace(x=0))

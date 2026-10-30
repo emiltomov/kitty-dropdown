@@ -5,6 +5,16 @@ session. It starts hidden at graphical login and hides when another window
 receives focus. On GNOME X11, it follows the monitor containing the mouse
 pointer. No `tdrop` is used.
 
+## Features
+
+- **Ctrl+Esc** toggles the existing terminal, preserving shells and tabs.
+- Hidden startup at graphical login and automatic hiding on focus loss.
+- Placement on the mouse pointer's monitor, including its usable width.
+- Bottom tabs with a new-tab button, pinning, and height controls.
+- New tabs inherit the active shell's current directory.
+- Translucent appearance, saved pin/height choices, and muted Kitty notifications.
+- Optional per-user configuration without editing the checkout.
+
 ## Install
 
 Requires a GNOME desktop session, Bash, Python 3 with PyGObject, and a Kitty
@@ -43,7 +53,33 @@ the shortcut and autostart paths.
 
 ## Configure
 
-Edit `quick-access-terminal.conf`. Current settings:
+Create your optional per-user configuration from the example:
+
+```sh
+config_dir="${XDG_CONFIG_HOME:-$HOME/.config}/kitty-dropdown"
+mkdir -p "$config_dir"
+cp -n config.example.conf "$config_dir/config.conf"
+```
+
+Edit `$config_dir/config.conf`, for example:
+
+```conf
+lines 700px
+background_opacity 0.85
+hide_on_focus_loss no
+kitty_override font_size=13
+kitty_override cursor_shape=beam
+kitty_override scrollback_lines=10000
+kitty_override enable_audio_bell=no
+```
+
+`lines` sets the initial height in pixels. Opacity ranges from `0` (transparent)
+to `1` (opaque). For pinning, `hide_on_focus_loss no` means **pin on**, while
+`yes` means **pin off**. Other regular Kitty options, including fonts, colors,
+scrollback, cursor style, and key mappings, use `kitty_override name=value`.
+This configuration affects only the dropdown, not your normal Kitty windows.
+
+The checked-in `quick-access-terminal.conf` provides these defaults:
 
 | Setting | Value |
 |---|---|
@@ -52,6 +88,8 @@ Edit `quick-access-terminal.conf`. Current settings:
 | Background opacity | `0.74` |
 | Hide on focus loss | `yes` |
 | Tab bar | Bottom, visible with one tab |
+| Monitor | Mouse pointer's monitor on GNOME X11 |
+| New-tab directory | Active shell's current directory |
 | Desktop notifications | Filtered; command-finish notifications disabled |
 
 The bottom bar keeps the normal tabs and adds these clickable controls:
@@ -61,20 +99,38 @@ The bottom bar keeps the normal tabs and adds these clickable controls:
 | `Pin` | Keep the dropdown visible when it loses focus; click again to restore auto-hide |
 | `-` / `+` | Decrease/increase its height by 100 pixels |
 | `Reset` | Restore the original 929-pixel height |
-| Native new-tab `+` beside the tabs | Open another shell tab |
+| Native new-tab `+` beside the tabs | Open a shell tab in the active shell's directory |
+
+**Ctrl+Shift+T** also opens a tab in the active shell's current directory.
+Changing directories with `cd` is reflected when opening the next tab. In a tab
+with multiple shell panes, the active pane supplies the directory. Explicit
+working directories in custom launch actions are preserved.
+
+The first dropdown shell still starts in your home directory, regardless of
+where `toggle` was invoked.
 
 Pin and height choices persist in
 `${XDG_STATE_HOME:-$HOME/.local/state}/kitty-dropdown/controls.conf`. Remove that
-file to return to the checked-in defaults. Saved choices override the base
-configuration; explicit launcher `--override` arguments take precedence.
-The height is capped at the current monitor's usable area.
+file to return to your configured initial height and pin state, or the checked-in
+defaults when no user configuration exists.
+
+Configuration precedence, from lowest to highest:
+
+1. Checked-in `quick-access-terminal.conf`.
+2. `${XDG_CONFIG_HOME:-$HOME/.config}/kitty-dropdown/config.conf`, if present.
+3. Remembered bottom-bar height and pin choices in `controls.conf`.
+4. Explicit launcher `--override` arguments.
+
+To discard remembered choices after changing your initial height or pin state:
+
+```sh
+rm -f "${XDG_STATE_HOME:-$HOME/.local/state}/kitty-dropdown/controls.conf"
+```
+
+The height is clamped between 240 pixels and the current monitor's usable height.
 Ctrl+Esc still hides a pinned dropdown. On X11, showing it on another monitor
 keeps the existing shell and tabs; the panel fits that monitor's usable width.
 Placement is reapplied after every show request, even without a focus change.
-
-Use native quick-access options such as `lines 600px` or
-`hide_on_focus_loss no`. Prefix regular Kitty settings with `kitty_override`,
-for example `kitty_override font_size=12`.
 
 Press **Ctrl+Esc** after editing the configuration to apply it to the existing
 dropdown. Watcher Python code is cached by Kitty; after changing watcher hooks
@@ -86,6 +142,30 @@ for supported settings.
 To change the shortcut persistently, update the `binding` value in
 `install-shortcut` and rerun it. GNOME Settings -> Keyboard -> Custom Shortcuts
 can also change the current binding; rerunning the installer restores Ctrl+Esc.
+
+## Troubleshooting
+
+**The dropdown opens on the wrong monitor:** move the mouse pointer to the
+desired monitor before pressing Ctrl+Esc. Monitor selection follows the pointer,
+not the last focused application. The placement workaround is for GNOME X11;
+Wayland monitor switching is not implemented. Check the detected usable area:
+
+```sh
+python3 desktop.py
+```
+
+**An edited initial height or pin setting does not take effect:** remembered
+bar choices override the per-user configuration. Remove the saved controls file
+described above and toggle again. `Reset` restores the built-in 929-pixel height
+only; it does not change pinning or reload your configured initial height.
+
+**The shortcut or login startup no longer works:** check that the portable Kitty
+installation still exists at `~/.local/kitty.app`, then rerun `./install-shortcut`
+from the current checkout. Installation is needed again after moving the
+checkout, but not after ordinary configuration edits.
+
+Startup runs after graphical login, when the GNOME display is available, not
+before login. It does not install a system service or replace the system Kitty.
 
 ## Disable or remove
 
@@ -112,6 +192,7 @@ Rerunning `./install-shortcut` reinstates startup, Ctrl+Esc, and muted notificat
 ```sh
 bash -n toggle
 shellcheck toggle
+python3 -c 'from pathlib import Path; p = Path("install-shortcut"); compile(p.read_text(), str(p), "exec")'
 python3 -m unittest discover -s tests -v
 ```
 
@@ -121,7 +202,7 @@ Run a single focused test:
 python3 -m unittest discover -s tests -v -k hidden_autostart
 ```
 
-For the bottom-bar controls:
+For the bottom-bar controls and new-tab directory behavior:
 
 ```sh
 python3 -m unittest discover -s tests -v -k ControlsTests

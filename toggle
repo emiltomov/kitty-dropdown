@@ -3,6 +3,7 @@ set -euo pipefail
 
 project_dir=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)
 kitty_bin="$HOME/.local/kitty.app/bin"
+user_config="${XDG_CONFIG_HOME:-$HOME/.config}/kitty-dropdown/config.conf"
 state_file="${XDG_STATE_HOME:-$HOME/.local/state}/kitty-dropdown/controls.conf"
 
 if [[ ! -x "$kitty_bin/kitten" ]]; then
@@ -13,14 +14,16 @@ fi
 export PATH="$kitty_bin:$PATH"
 # An existing Kitty terminal can point kittens at an older installation.
 unset KITTY_INSTALLATION_DIR KITTY_PID
-state_config=()
-if [[ -f "$state_file" ]]; then
-	state_config=(--config "$state_file")
-fi
+additional_configs=()
+for config in "$user_config" "$state_file"; do
+	if [[ -f "$config" ]]; then
+		additional_configs+=(--config "$config")
+	fi
+done
 cd -- "$HOME"
 exec "$kitty_bin/kitten" quick-access-terminal \
 	--config "$project_dir/quick-access-terminal.conf" \
-	"${state_config[@]}" \
+	"${additional_configs[@]}" \
 	--instance-group kitty-dropdown \
 	--override "kitty_override=watcher=$project_dir/controls.py" \
 	--override "kitty_override=watcher=$project_dir/desktop.py" \
