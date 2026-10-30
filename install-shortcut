@@ -1,0 +1,30 @@
+#!/usr/bin/env python3
+import shlex
+from pathlib import Path
+
+from gi.repository import Gio
+
+
+project_dir = Path(__file__).resolve().parent
+shortcut_path = (
+    "/org/gnome/settings-daemon/plugins/media-keys/custom-keybindings/"
+    "kitty-dropdown/"
+)
+settings = Gio.Settings.new("org.gnome.settings-daemon.plugins.media-keys")
+shortcut = Gio.Settings.new_with_path(
+    "org.gnome.settings-daemon.plugins.media-keys.custom-keybinding",
+    shortcut_path,
+)
+
+shortcut.delay()
+shortcut.set_string("name", "Kitty dropdown")
+shortcut.set_string("command", shlex.quote(str(project_dir / "toggle")))
+shortcut.set_string("binding", "<Control>Escape")
+shortcut.apply()
+
+paths = settings.get_strv("custom-keybindings")
+if shortcut_path not in paths:
+    settings.set_strv("custom-keybindings", [*paths, shortcut_path])
+Gio.Settings.sync()
+
+print("Ctrl+Esc toggles Kitty. Existing custom shortcuts are preserved.")
