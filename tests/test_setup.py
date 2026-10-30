@@ -20,7 +20,10 @@ class SetupTests(unittest.TestCase):
                 "printf '%s\\n' \"$@\"\n"
             )
             kitten.chmod(0o755)
-            env = dict(os.environ, HOME=home, KITTY_PID="123", KITTY_INSTALLATION_DIR="/old")
+            env = dict(
+                os.environ, HOME=home, XDG_STATE_HOME=str(Path(home) / "state"),
+                KITTY_PID="123", KITTY_INSTALLATION_DIR="/old",
+            )
             for arguments in ([], ["--override", "start_as_hidden=yes"]):
                 with self.subTest(arguments=arguments):
                     result = subprocess.run(
@@ -33,9 +36,18 @@ class SetupTests(unittest.TestCase):
                             "quick-access-terminal", "--config",
                             str(ROOT / "quick-access-terminal.conf"),
                             "--instance-group", "kitty-dropdown",
+                            "--override", f"kitty_override=watcher={ROOT / 'controls.py'}",
+                            "--override", f"kitty_override=watcher={ROOT / 'desktop.py'}",
                             *arguments, "--detach",
                         ],
                     )
+            state = Path(env["XDG_STATE_HOME"]) / "kitty-dropdown/controls.conf"
+            state.parent.mkdir(parents=True)
+            state.write_text("lines 700px\nhide_on_focus_loss no\n")
+            result = subprocess.run(
+                [str(ROOT / "toggle")], env=env, check=True, capture_output=True, text=True,
+            )
+            self.assertIn(f"--config\n{state}\n", result.stdout)
 
     def test_install_preserves_shortcuts_and_creates_hidden_autostart(self):
         with tempfile.TemporaryDirectory() as temporary:
