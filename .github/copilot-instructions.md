@@ -85,7 +85,10 @@ monitor percentage.
 
 `toggle` loads `controls.py` as a global Kitty watcher, scoped to this dropdown.
 It augments native tab rendering and intercepts only control-button mouse
-events; other tab events retain Kitty's handler. Pin changes native
+events and left clicks on each tab's `×`; other tab events retain Kitty's
+handler. The `×` is inserted before the native separator, inside the tab's
+native extent, and closes through `boss.close_tab()`, like a middle click.
+Pin changes native
 `hide_on_focus_loss`; height changes use native OS-window resizing. Saved
 choices in `$XDG_STATE_HOME/kitty-dropdown/controls.conf` (default
 `~/.local/state/kitty-dropdown/controls.conf`) load after the base configuration

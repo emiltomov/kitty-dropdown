@@ -4,6 +4,9 @@ from pathlib import Path
 import subprocess
 
 
+CLOSE = "× "
+
+
 def state_file():
     directory = Path(os.environ.get("XDG_STATE_HOME", Path.home() / ".local/state"))
     return directory / "kitty-dropdown/controls.conf"
@@ -16,6 +19,7 @@ class Controls:
         self.original_new_tab = manager.new_tab
         self.start = None
         self.pressed = None
+        self.closable = set()
 
     def new_tab(self, *args, **kwargs):
         from kitty.window import CwdRequest
@@ -49,10 +53,31 @@ class Controls:
         available = max_length
         if self.start is not None:
             available = max(1, min(max_length, self.start - before))
+        closable = tab.tab_id > 0 and available >= len(CLOSE) + 2
+        if closable:
+            available -= len(CLOSE)
+        fg, bg = screen.cursor.fg, screen.cursor.bg
         end = draw_tab_with_separator(
             data, screen, tab, before, available, index, is_last, extra
         )
+        if closable:
+            # Insert before the native separator so it stays in the tab's extent.
+            after = screen.cursor.x
+            screen.cursor.x = end
+            screen.insert_characters(len(CLOSE))
+            screen.cursor.fg, screen.cursor.bg = fg, bg
+            screen.draw(CLOSE)
+            screen.cursor.fg = screen.cursor.bg = 0
+            screen.cursor.x = after + len(CLOSE)
+            end += len(CLOSE)
+        if not extra.for_layout:
+            if closable:
+                self.closable.add(tab.tab_id)
+            else:
+                self.closable.discard(tab.tab_id)
         if is_last and self.start is not None and not extra.for_layout:
+            # Kitty's trailing erase starts after the controls; clear title remnants.
+            screen.erase_in_line(0, False)
             screen.cursor.x = self.start
             screen.cursor.fg = screen.cursor.bg = 0
             screen.cursor.bold = True
@@ -60,14 +85,29 @@ class Controls:
             screen.cursor.bold = False
         return end
 
-    def button_at(self, x, y):
+    def column_at(self, x, y):
         bar = self.manager.tab_bar
         geometry = bar.window_geometry
-        if self.start is None or not (
-            geometry.left <= x < geometry.right and geometry.top <= y < geometry.bottom
-        ):
+        if geometry.left <= x < geometry.right and geometry.top <= y < geometry.bottom:
+            return (x - geometry.left) // bar.cell_width
+        return None
+
+    def close_at(self, x, y):
+        column = self.column_at(x, y)
+        if column is None:
             return None
-        column = (x - geometry.left) // bar.cell_width
+        for extent in self.manager.tab_bar.tab_extents:
+            if (
+                extent.tab_id in self.closable
+                and extent.x.end - len(CLOSE) <= column < extent.x.end
+            ):
+                return extent.tab_id
+        return None
+
+    def button_at(self, x, y):
+        column = self.column_at(x, y)
+        if self.start is None or column is None:
+            return None
         start = self.start + 1
         for label, action in self.buttons():
             if start <= column < start + len(label):
@@ -78,17 +118,30 @@ class Controls:
     def mouse(self, x, y, button, modifiers, action):
         from kitty.fast_data_types import GLFW_MOUSE_BUTTON_LEFT, GLFW_PRESS, GLFW_RELEASE
 
-        target = self.button_at(x, y)
+        target = self.close_at(x, y) or self.button_at(x, y)
         if button == GLFW_MOUSE_BUTTON_LEFT:
             if action == GLFW_PRESS:
                 self.pressed = target
+                if target is not None:
+                    return
             elif action == GLFW_RELEASE and self.pressed is not None:
                 pressed, self.pressed = self.pressed, None
                 if target == pressed:
-                    self.activate(target)
+                    if isinstance(target, int):
+                        self.close(target)
+                    else:
+                        self.activate(target)
                 return
-        if target is None:
+        # Close glyphs belong to their tab; only their left clicks are intercepted.
+        if target is None or isinstance(target, int):
             self.original_mouse(x, y, button, modifiers, action)
+
+    def close(self, tab_id):
+        from kitty.fast_data_types import get_boss
+
+        tab = self.manager.tab_for_id(tab_id)
+        if tab is not None:
+            get_boss().close_tab(tab)
 
     def activate(self, action):
         from kitty.fast_data_types import (

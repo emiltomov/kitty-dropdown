@@ -23,12 +23,14 @@ class ControlsTests(unittest.TestCase):
         self.path = Path(temporary.name) / "kitty-dropdown/controls.conf"
         self.config = {"hide_on_focus_loss": True, "y_size_in_pixels": 929}
         self.metrics = {"height": 929}
+        self.boss = SimpleNamespace(close_tab=Mock())
         self.native = SimpleNamespace(
             GLFW_MOUSE_BUTTON_LEFT=0, GLFW_PRESS=1, GLFW_RELEASE=0,
             layer_shell_config_for_os_window=lambda _: dict(self.config),
             get_os_window_size=lambda _: self.metrics,
             set_layer_shell_config=lambda _, config: self.config.update(vars(config)),
             set_os_window_size=Mock(), x11_window_id=lambda _: 123,
+            get_boss=lambda: self.boss,
         )
         modules = patch.dict(sys.modules, {
             "kitty": ModuleType("kitty"),
@@ -41,9 +43,10 @@ class ControlsTests(unittest.TestCase):
         self.manager = SimpleNamespace(
             os_window_id=1, handle_tab_bar_mouse=Mock(), mark_tab_bar_dirty=Mock(),
             new_tab=Mock(), active_tab=SimpleNamespace(active_window=object()),
+            tab_for_id=lambda tab_id: f"tab {tab_id}",
             tab_bar=SimpleNamespace(
                 window_geometry=SimpleNamespace(left=0, right=900, top=700, bottom=718),
-                cell_width=9,
+                cell_width=9, tab_extents=(),
             ),
         )
         self.controls = Controls(self.manager)
@@ -121,7 +124,7 @@ class ControlsTests(unittest.TestCase):
         self.assertEqual(manager.new_tab, manager._dropdown_controls.new_tab)
 
     def test_controls_do_not_expand_the_last_tabs_clickable_extent(self):
-        screen = SimpleNamespace(columns=100, cursor=SimpleNamespace(x=0))
+        screen = SimpleNamespace(columns=100, cursor=SimpleNamespace(x=0, fg=0, bg=0))
 
         def draw_text(text):
             screen.cursor.x += len(text)
@@ -131,16 +134,82 @@ class ControlsTests(unittest.TestCase):
             return 12
 
         screen.draw = draw_text
+        screen.erase_in_line = lambda *args: None
         with patch.dict(sys.modules, {
             "kitty.tab_bar": SimpleNamespace(draw_tab_with_separator=draw_tab),
         }):
             for layout in (True, False):
                 result = self.controls.draw(
-                    None, screen, None, 0, 100, 1, True,
+                    None, screen, SimpleNamespace(tab_id=-1), 0, 100, 1, True,
                     SimpleNamespace(for_layout=layout),
                 )
                 self.assertEqual(result, 12)
                 self.assertEqual(screen.cursor.x, 12 if layout else 100)
+
+    def test_close_button_is_drawn_inside_each_real_tab_before_its_separator(self):
+        class Screen:
+            columns = 100
+
+            def __init__(self):
+                self.cursor = SimpleNamespace(x=0, fg=0, bg=0, bold=False)
+                self.cells = ["x"] * self.columns
+
+            def draw(self, text):
+                for character in text:
+                    self.cells[self.cursor.x] = character
+                    self.cursor.x += 1
+
+            def erase_in_line(self, how, private):
+                self.cells[self.cursor.x:] = [" "] * (self.columns - self.cursor.x)
+
+            def insert_characters(self, count):
+                x = self.cursor.x
+                self.cells[x:] = ([" "] * count + self.cells[x:])[:self.columns - x]
+
+        def draw_tab(data, screen, tab, before, max_length, index, is_last, extra):
+            screen.draw(tab.title[:max_length - 1] + " ")
+            end = screen.cursor.x
+            if not is_last:
+                screen.draw("┇")
+            return end
+
+        screen = Screen()
+        extra = SimpleNamespace(for_layout=False)
+        with patch.dict(sys.modules, {
+            "kitty.tab_bar": SimpleNamespace(draw_tab_with_separator=draw_tab),
+        }):
+            ends = [
+                self.controls.draw(None, screen, SimpleNamespace(tab_id=tab_id, title=title),
+                                   screen.cursor.x, 100, index, is_last, extra)
+                for index, (tab_id, title, is_last) in enumerate(
+                    ((1, "shell", False), (-1, "+", True)), 1
+                )
+            ]
+            self.assertEqual("".join(screen.cells[:11]), "shell × ┇+ ")
+            self.assertEqual("".join(screen.cells[11:73]).strip(), "")
+            self.assertEqual(ends, [8, 11])
+            self.assertEqual(self.controls.closable, {1})
+            screen.cursor.x = 0
+            self.controls.draw(None, screen, SimpleNamespace(tab_id=1, title="shell"),
+                               0, 3, 1, False, extra)
+            self.assertEqual(self.controls.closable, set())
+
+    def test_close_click_closes_its_tab_while_other_tab_events_stay_native(self):
+        extent = SimpleNamespace(tab_id=1, x=SimpleNamespace(start=0, end=8))
+        self.manager.tab_bar.tab_extents = (extent,)
+        self.controls.closable = {1}
+        close, title = 6 * 9, 2 * 9
+        self.controls.mouse(close, 710, 0, 0, 1)
+        self.controls.mouse(close, 710, 0, 0, 0)
+        self.boss.close_tab.assert_called_once_with("tab 1")
+        self.controls.mouse(close, 710, 0, 0, 1)
+        self.controls.mouse(title, 710, 0, 0, 0)
+        self.controls.mouse(close, 710, 2, 0, 1)
+        self.controls.mouse(close, 710, 2, 0, 0)
+        self.controls.mouse(title, 710, 0, 0, 1)
+        self.controls.mouse(close, 710, 0, 0, 0)
+        self.boss.close_tab.assert_called_once()
+        self.assertEqual(self.manager.handle_tab_bar_mouse.call_count, 4)
 
 
 class MonitorTests(unittest.TestCase):

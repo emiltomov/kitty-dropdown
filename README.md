@@ -10,7 +10,7 @@ pointer. No `tdrop` is used.
 - **Ctrl+Esc** toggles the existing terminal, preserving shells and tabs.
 - Hidden startup at graphical login and automatic hiding on focus loss.
 - Placement on the mouse pointer's monitor, including its usable width.
-- Bottom tabs with a new-tab button, pinning, and height controls.
+- Bottom tabs with a new-tab button, per-tab close buttons, pinning, and height controls.
 - New tabs inherit the active shell's current directory.
 - Translucent appearance, saved pin/height choices, and muted Kitty notifications.
 - Optional per-user configuration without editing the checkout.
@@ -99,7 +99,11 @@ The bottom bar keeps the normal tabs and adds these clickable controls:
 | `Pin` | Keep the dropdown visible when it loses focus; click again to restore auto-hide |
 | `-` / `+` | Decrease/increase its height by 100 pixels |
 | `Reset` | Restore the original 929-pixel height |
+| `×` on each tab | Close that tab, asking first if Kitty's close confirmation applies |
 | Native new-tab `+` beside the tabs | Open a shell tab in the active shell's directory |
+
+Closing the last tab ends the dropdown session; the next **Ctrl+Esc** starts a
+fresh one. Very narrow tabs omit `×`; middle-clicking a tab also closes it.
 
 **Ctrl+Shift+T** also opens a tab in the active shell's current directory.
 Changing directories with `cd` is reflected when opening the next tab. In a tab
