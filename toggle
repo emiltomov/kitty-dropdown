@@ -5,6 +5,7 @@ project_dir=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)
 kitty_bin="$HOME/.local/kitty.app/bin"
 user_config="${XDG_CONFIG_HOME:-$HOME/.config}/kitty-dropdown/config.conf"
 state_file="${XDG_STATE_HOME:-$HOME/.local/state}/kitty-dropdown/controls.conf"
+session_file="${state_file%/*}/session.kitty"
 
 if [[ ! -x "$kitty_bin/kitten" ]]; then
 	printf 'Install native Kitty in %s first.\n' "$HOME/.local/kitty.app" >&2
@@ -27,5 +28,6 @@ exec "$kitty_bin/kitten" quick-access-terminal \
 	--instance-group kitty-dropdown \
 	--override "kitty_override=watcher=$project_dir/controls.py" \
 	--override "kitty_override=watcher=$project_dir/desktop.py" \
+	--override "kitty_override=startup_session=$session_file" \
 	"$@" \
 	--detach

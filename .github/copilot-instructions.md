@@ -100,8 +100,18 @@ user's existing configuration.
 
 Bare native tab-bar `new_tab()` requests inherit the active window through
 `CwdRequest`; explicit creation arguments remain unchanged. Ctrl+Shift+T uses
-the native `new_tab_with_cwd` action. Keep the first shell's home directory
-independent of this subsequent-tab behavior.
+the native `new_tab_with_cwd` action. Keep a fresh dropdown's first shell in the
+home directory, independent of this subsequent-tab behavior.
+
+Tabs persist through native Kitty sessions. Whenever the tab list changes
+(tab IDs and whether each has windows, i.e. tab creation and closing, not
+renames or `cd`), `controls.py` writes the dropdown manager's
+`serialize_state_as_session()` output with `atomic_save` to
+`$XDG_STATE_HOME/kitty-dropdown/session.kitty`. It skips saving while a Kitty
+quit is requested, so SIGTERM or quit teardown cannot overwrite the session.
+`toggle` always passes `kitty_override=startup_session=<file>` before `"$@"`.
+Kitty ignores a missing file, and the option applies only when an instance
+starts, so the stable override avoids config reloads on toggles.
 
 On initial focus and after every native show request, the watchers call
 `desktop.py` with system Python to query the pointer monitor's usable geometry

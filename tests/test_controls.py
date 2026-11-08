@@ -13,6 +13,16 @@ Controls = MODULE["Controls"]
 DESKTOP = runpy.run_path(str(Path(__file__).resolve().parents[1] / "desktop.py"))
 
 
+class Tab(list):
+    def __init__(self, tab_id, *windows):
+        super().__init__(windows)
+        self.id = tab_id
+
+
+class Manager(list):
+    pass
+
+
 class ControlsTests(unittest.TestCase):
     def setUp(self):
         temporary = tempfile.TemporaryDirectory()
@@ -24,6 +34,8 @@ class ControlsTests(unittest.TestCase):
         self.config = {"hide_on_focus_loss": True, "y_size_in_pixels": 929}
         self.metrics = {"height": 929}
         self.boss = SimpleNamespace(close_tab=Mock())
+        self.quit = 0
+        self.save = Mock(side_effect=lambda data, path: Path(path).write_bytes(data))
         self.native = SimpleNamespace(
             GLFW_MOUSE_BUTTON_LEFT=0, GLFW_PRESS=1, GLFW_RELEASE=0,
             layer_shell_config_for_os_window=lambda _: dict(self.config),
@@ -31,10 +43,13 @@ class ControlsTests(unittest.TestCase):
             set_layer_shell_config=lambda _, config: self.config.update(vars(config)),
             set_os_window_size=Mock(), x11_window_id=lambda _: 123,
             get_boss=lambda: self.boss,
+            NO_CLOSE_REQUESTED=0, current_application_quit_request=lambda: self.quit,
         )
         modules = patch.dict(sys.modules, {
             "kitty": ModuleType("kitty"),
+            "kitty.config": SimpleNamespace(atomic_save=self.save),
             "kitty.fast_data_types": self.native,
+            "kitty.session": SimpleNamespace(default_save_as_session_opts=lambda: "defaults"),
             "kitty.types": SimpleNamespace(LayerShellConfig=SimpleNamespace),
             "kitty.window": SimpleNamespace(CwdRequest=lambda window: SimpleNamespace(window=window)),
         })
@@ -44,6 +59,7 @@ class ControlsTests(unittest.TestCase):
             os_window_id=1, handle_tab_bar_mouse=Mock(), mark_tab_bar_dirty=Mock(),
             new_tab=Mock(), active_tab=SimpleNamespace(active_window=object()),
             tab_for_id=lambda tab_id: f"tab {tab_id}",
+            serialize_state_as_session=Mock(return_value=[]),
             tab_bar=SimpleNamespace(
                 window_geometry=SimpleNamespace(left=0, right=900, top=700, bottom=718),
                 cell_width=9, tab_extents=(),
@@ -109,11 +125,7 @@ class ControlsTests(unittest.TestCase):
     def test_watcher_reinstallation_preserves_existing_focus_callbacks(self):
         callback = Mock()
         child = SimpleNamespace(watchers=SimpleNamespace(on_focus_change=[callback]))
-
-        class Manager(list):
-            pass
-
-        manager = Manager([[child]])
+        manager = Manager([Tab(1, child)])
         manager.__dict__.update(vars(self.manager))
         install = MODULE["on_tab_bar_dirty"]
         install(None, child, {"tab_manager": manager})
@@ -122,6 +134,37 @@ class ControlsTests(unittest.TestCase):
         self.assertIs(child.watchers.on_focus_change[0], callback)
         self.assertIs(manager._dropdown_controls.original_new_tab, self.manager.new_tab)
         self.assertEqual(manager.new_tab, manager._dropdown_controls.new_tab)
+
+    def test_tab_creation_and_closing_save_current_tabs_but_quitting_does_not(self):
+        child = SimpleNamespace(watchers=SimpleNamespace(on_focus_change=[]))
+        manager = Manager([Tab(1, child), Tab(2)])
+        manager.__dict__.update(vars(self.manager))
+        manager.serialize_state_as_session = lambda path, matched, options, is_first: [
+            f"{path} {matched} {options} {is_first}",
+            *(f"{tab.id}:{len(tab)}" for tab in manager),
+        ]
+        session = self.path.with_name("session.kitty")
+        install = MODULE["on_tab_bar_dirty"]
+
+        def dirty(*expected):
+            install(None, child, {"tab_manager": manager})
+            self.assertEqual(
+                session.read_text().splitlines(),
+                [f"{session} None defaults True", *expected],
+            )
+
+        dirty("1:1", "2:0")
+        manager[1].append(child)
+        dirty("1:1", "2:1")
+        dirty("1:1", "2:1")
+        self.assertEqual(self.save.call_count, 2)
+        self.quit = 1
+        manager[0].clear()
+        dirty("1:1", "2:1")
+        self.quit = 0
+        dirty("1:0", "2:1")
+        del manager[0]
+        dirty("2:1")
 
     def test_controls_do_not_expand_the_last_tabs_clickable_extent(self):
         screen = SimpleNamespace(columns=100, cursor=SimpleNamespace(x=0, fg=0, bg=0))
