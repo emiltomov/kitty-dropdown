@@ -12,6 +12,10 @@ def state_file():
     return directory / "kitty-dropdown/controls.conf"
 
 
+def session_file():
+    return state_file().with_name("session.kitty")
+
+
 class Controls:
     def __init__(self, manager):
         self.manager = manager
@@ -20,6 +24,25 @@ class Controls:
         self.start = None
         self.pressed = None
         self.closable = set()
+        self.tabs = None
+
+    def save_session(self):
+        from kitty.config import atomic_save
+        from kitty.fast_data_types import NO_CLOSE_REQUESTED, current_application_quit_request
+        from kitty.session import default_save_as_session_opts
+
+        tabs = [(tab.id, len(tab) > 0) for tab in self.manager]
+        # Save tab changes only; shutdown must not overwrite the session.
+        if tabs == self.tabs or current_application_quit_request() != NO_CLOSE_REQUESTED:
+            return
+        self.tabs = tabs
+        path = session_file()
+        lines = self.manager.serialize_state_as_session(
+            str(path), None, default_save_as_session_opts(), is_first=True
+        )
+        if lines:
+            path.parent.mkdir(parents=True, exist_ok=True)
+            atomic_save(("\n".join(lines) + "\n").encode(), str(path))
 
     def new_tab(self, *args, **kwargs):
         from kitty.window import CwdRequest
@@ -209,3 +232,4 @@ def on_tab_bar_dirty(boss, window, data):
             callbacks = child.watchers.on_focus_change
             if controls.focus not in callbacks:
                 callbacks.append(controls.focus)
+    controls.save_session()

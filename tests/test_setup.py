@@ -39,6 +39,9 @@ class SetupTests(unittest.TestCase):
                             "--instance-group", "kitty-dropdown",
                             "--override", f"kitty_override=watcher={ROOT / 'controls.py'}",
                             "--override", f"kitty_override=watcher={ROOT / 'desktop.py'}",
+                            "--override",
+                            "kitty_override=startup_session="
+                            f"{Path(env['XDG_STATE_HOME']) / 'kitty-dropdown/session.kitty'}",
                             *arguments, "--detach",
                         ],
                     )

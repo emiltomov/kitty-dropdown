@@ -12,6 +12,7 @@ pointer. No `tdrop` is used.
 - Placement on the mouse pointer's monitor, including its usable width.
 - Bottom tabs with a new-tab button, per-tab close buttons, pinning, and height controls.
 - New tabs inherit the active shell's current directory.
+- Open tabs, with their names and directories, are restored after a restart.
 - Translucent appearance, saved pin/height choices, and muted Kitty notifications.
 - Optional per-user configuration without editing the checkout.
 
@@ -103,15 +104,29 @@ The bottom bar keeps the normal tabs and adds these clickable controls:
 | Native new-tab `+` beside the tabs | Open a shell tab in the active shell's directory |
 
 Closing the last tab ends the dropdown session; the next **Ctrl+Esc** starts a
-fresh one. Very narrow tabs omit `×`; middle-clicking a tab also closes it.
+new one from the last saved tabs (see below). Very narrow tabs omit `×`;
+middle-clicking a tab also closes it.
 
 **Ctrl+Shift+T** also opens a tab in the active shell's current directory.
 Changing directories with `cd` is reflected when opening the next tab. In a tab
 with multiple shell panes, the active pane supplies the directory. Explicit
 working directories in custom launch actions are preserved.
 
-The first dropdown shell still starts in your home directory, regardless of
-where `toggle` was invoked.
+A fresh dropdown's first shell still starts in your home directory, regardless
+of where `toggle` was invoked.
+
+Open tabs are saved whenever a tab is created or closed, to
+`${XDG_STATE_HOME:-$HOME/.local/state}/kitty-dropdown/session.kitty`, and are
+restored the next time the dropdown starts, for example after a restart or
+logout. Each tab keeps its renamed title, its layout, and its shells'
+directories as of that save. Running programs and scrollback are not restored.
+Renaming a tab or using `cd` does not save by itself; the next tab creation or
+closing does. Quitting or killing Kitty never overwrites the saved tabs. To
+start fresh next time:
+
+```sh
+rm -f "${XDG_STATE_HOME:-$HOME/.local/state}/kitty-dropdown/session.kitty"
+```
 
 Pin and height choices persist in
 `${XDG_STATE_HOME:-$HOME/.local/state}/kitty-dropdown/controls.conf`. Remove that
